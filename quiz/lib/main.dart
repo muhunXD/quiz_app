@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 void main() {
   runApp(MyApp());
@@ -10,75 +11,96 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Quiz App',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.green,
       ),
-      home: QuizPage(),
+      home: FutureBuilder(
+        future: loadQuestions(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            if (snapshot.hasError) {
+              return Scaffold(
+                body: Center(child: Text('Error loading questions')),
+              );
+            } else {
+              final questions = snapshot.data as List<Question>;
+              return QuizPage(questions: questions);
+            }
+          } else {
+            return Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+        },
+      ),
     );
+  }
+
+  Future<List<Question>> loadQuestions() async {
+    final String content = await rootBundle.loadString('assets/Question.txt');
+
+    // Print the content of the file to the terminal
+    print('File content:\n$content');
+
+    final List<Question> questions = parseQuestions(content);
+    return questions;
+  }
+
+  List<Question> parseQuestions(String content) {
+    final List<Question> questions = [];
+    final lines = content.split('\n');
+    Map<String, bool> answers = {};
+    String questionText = '';
+    int lineIndex = 0;
+
+    while (lineIndex < lines.length) {
+      if (lines[lineIndex].trim().isEmpty) {
+        lineIndex++;
+        continue;
+      }
+
+      // Reading question
+      if (lines[lineIndex].contains(RegExp(r'\d+\.\s'))) {
+        if (questionText.isNotEmpty && answers.isNotEmpty) {
+          questions.add(
+              Question(questionText: questionText, answers: Map.from(answers)));
+          answers.clear();
+        }
+        questionText = lines[lineIndex].trim();
+        lineIndex++;
+      }
+
+      // Reading answers
+      while (lineIndex < lines.length &&
+          !lines[lineIndex].contains(RegExp(r'\d+\.\s'))) {
+        final parts = lines[lineIndex].split(' ');
+        if (parts.length >= 2) {
+          final answerText = parts.sublist(0, parts.length - 1).join(' ');
+          final isCorrect = parts.last == 'true';
+          answers[answerText] = isCorrect;
+        }
+        lineIndex++;
+      }
+    }
+
+    if (questionText.isNotEmpty && answers.isNotEmpty) {
+      questions.add(
+          Question(questionText: questionText, answers: Map.from(answers)));
+    }
+
+    return questions;
   }
 }
 
 class QuizPage extends StatefulWidget {
+  final List<Question> questions;
+
+  QuizPage({required this.questions});
+
   @override
   _QuizPageState createState() => _QuizPageState();
 }
 
 class _QuizPageState extends State<QuizPage> {
-  final List<Question> _questions = [
-    Question(
-        questionText:
-            'การรวมเลขของระบบ 2’s complement 2 + 7 ควรได้เลขฐานสอง จำนวน 5 บิตเป็นเท่าไร',
-        answers: {
-          'ก. 00110': false,
-          'ข. 01001': false,
-          'ค. 10000': true,
-          'ง. 00111': false,
-        }),
-    Question(
-        questionText: 'Canonical sum ของ AB + AbarB ควรอ่านว่าอย่างไร',
-        answers: {
-          'ก. A and B or A bar and B': true,
-          'ข. A or B and A bar or B': false,
-          'ค. A and B or A and B': false,
-          'ง. ถูกทุกข้อ': false,
-        }),
-    Question(
-        questionText:
-            'จากเลขฐานสอง 101011 เมื่อแปลงเป็นเลขฐานสิบแล้ว ค่าที่ได้ตรงกับข้อใด',
-        answers: {
-          'ก. 30₁₀': false,
-          'ข. 43₁₀': false,
-          'ค. 45₁₀': true,
-          'ง. 47₁₀': false,
-        }),
-    Question(
-        questionText:
-            'Maurice Karnaugh คือผู้คิดหลักการลดรูปสมการบูลีนด้วยวิธีอะไร',
-        answers: {
-          'ก. Karnaugh Map': true,
-          'ข. Karna Map': false,
-          'ค. Karnung Map': false,
-          'ง. Kaning Map': false,
-        }),
-    Question(
-        questionText:
-            'จงแปลงกลับ 10’s compliment ของเลขฐานสองดังต่อไปนี้ -01110 (-14)',
-        answers: {
-          'ก. 951': false,
-          'ข. 231': false,
-          'ค. 064': true,
-          'ง. 085': false,
-        }),
-    Question(
-        questionText:
-            'จงแปลงกลับ 2 compliment ของเลขฐาน10ดังต่อไปนี้ 16(10000)',
-        answers: {
-          'ก. 00010': false,
-          'ข. 00001': true,
-          'ค. 101111': false,
-          'ง. 10001': false,
-        }),
-  ];
-
   int _currentQuestionIndex = 0;
   int _score = 0;
 
@@ -93,7 +115,7 @@ class _QuizPageState extends State<QuizPage> {
       _currentQuestionIndex++;
     });
 
-    if (_currentQuestionIndex >= _questions.length) {
+    if (_currentQuestionIndex >= widget.questions.length) {
       _showResultDialog();
     }
   }
@@ -103,7 +125,8 @@ class _QuizPageState extends State<QuizPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Quiz Completed!'),
-        content: Text('Your score is $_score out of ${_questions.length}'),
+        content:
+            Text('Your score is $_score out of ${widget.questions.length}'),
         actions: [
           TextButton(
             onPressed: () {
@@ -129,15 +152,15 @@ class _QuizPageState extends State<QuizPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Quiz App'),
-        backgroundColor: Colors.green, // Change this to any color you like
+        backgroundColor: Colors.green,
       ),
-      body: _currentQuestionIndex < _questions.length
+      body: _currentQuestionIndex < widget.questions.length
           ? Quiz(
-              question: _questions[_currentQuestionIndex],
+              question: widget.questions[_currentQuestionIndex],
               answerQuestion: _answerQuestion,
             )
           : Center(
-              child: Text('You did it! Your score is $_score'),
+              child: Text('คุณได้ $_score คะแนน'),
             ),
     );
   }
@@ -152,36 +175,31 @@ class Quiz extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                question.questionText,
-                style: TextStyle(fontSize: 24),
-                textAlign: TextAlign.left,
-              ),
-              SizedBox(height: 20),
-              ...question.answers.keys.map((answer) {
-                return Container(
-                  width: double.infinity,
-                  margin: EdgeInsets.only(bottom: 10),
-                  child: ElevatedButton(
-                    onPressed: () => answerQuestion(question.answers[answer]!),
-                    child: Text(answer),
-                    style: ElevatedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      padding:
-                          EdgeInsets.symmetric(vertical: 15, horizontal: 10),
-                    ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              question.questionText,
+              style: TextStyle(fontSize: 24),
+            ),
+            SizedBox(height: 20),
+            ...question.answers.keys.map((answer) {
+              return Container(
+                width: double.infinity,
+                margin: EdgeInsets.only(bottom: 10),
+                child: ElevatedButton(
+                  onPressed: () => answerQuestion(question.answers[answer]!),
+                  child: Text(answer),
+                  style: ElevatedButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: EdgeInsets.symmetric(vertical: 15, horizontal: 10),
                   ),
-                );
-              }).toList(),
-            ],
-          ),
+                ),
+              );
+            }).toList(),
+          ],
         ),
       ),
     );
