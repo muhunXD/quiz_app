@@ -1,0 +1,4 @@
+2. Canonical sum ของ AB + AbarB ควรอ่านว่าอย่างไร
+A and B or A bar and B true
+A or B and A bar or B false
+A and B or A and B false

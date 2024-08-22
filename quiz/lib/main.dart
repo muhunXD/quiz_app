@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'question_parser.dart';
 
 void main() {
   runApp(MyApp());
@@ -13,17 +14,22 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.green,
       ),
-      home: FutureBuilder(
+      home: FutureBuilder<List<Question>>(
         future: loadQuestions(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
             if (snapshot.hasError) {
               return Scaffold(
-                body: Center(child: Text('Error loading questions')),
+                body: Center(
+                    child: Text('Error loading questions: ${snapshot.error}')),
               );
-            } else {
-              final questions = snapshot.data as List<Question>;
+            } else if (snapshot.hasData) {
+              final questions = snapshot.data!;
               return QuizPage(questions: questions);
+            } else {
+              return Scaffold(
+                body: Center(child: Text('No questions found.')),
+              );
             }
           } else {
             return Scaffold(
@@ -36,13 +42,13 @@ class MyApp extends StatelessWidget {
   }
 
   Future<List<Question>> loadQuestions() async {
-    final String content = await rootBundle.loadString('assets/Question.txt');
-
-    // Print the content of the file to the terminal
-    print('File content:\n$content');
-
-    final List<Question> questions = parseQuestions(content);
-    return questions;
+    try {
+      final String content = await rootBundle.loadString('assets/Working.txt');
+      final List<Question> questions = parseQuestions(content);
+      return questions;
+    } catch (e) {
+      throw Exception('Failed to load questions: $e');
+    }
   }
 
   List<Question> parseQuestions(String content) {
@@ -58,7 +64,6 @@ class MyApp extends StatelessWidget {
         continue;
       }
 
-      // Reading question
       if (lines[lineIndex].contains(RegExp(r'\d+\.\s'))) {
         if (questionText.isNotEmpty && answers.isNotEmpty) {
           questions.add(
@@ -69,7 +74,6 @@ class MyApp extends StatelessWidget {
         lineIndex++;
       }
 
-      // Reading answers
       while (lineIndex < lines.length &&
           !lines[lineIndex].contains(RegExp(r'\d+\.\s'))) {
         final parts = lines[lineIndex].split(' ');
@@ -105,19 +109,13 @@ class _QuizPageState extends State<QuizPage> {
   int _score = 0;
 
   void _answerQuestion(bool isCorrect) {
-    if (isCorrect) {
-      setState(() {
-        _score++;
-      });
-    }
-
     setState(() {
+      if (isCorrect) _score++;
       _currentQuestionIndex++;
+      if (_currentQuestionIndex >= widget.questions.length) {
+        _showResultDialog();
+      }
     });
-
-    if (_currentQuestionIndex >= widget.questions.length) {
-      _showResultDialog();
-    }
   }
 
   void _showResultDialog() {
@@ -175,32 +173,30 @@ class Quiz extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              question.questionText,
-              style: TextStyle(fontSize: 24),
-            ),
-            SizedBox(height: 20),
-            ...question.answers.keys.map((answer) {
-              return Container(
-                width: double.infinity,
-                margin: EdgeInsets.only(bottom: 10),
-                child: ElevatedButton(
-                  onPressed: () => answerQuestion(question.answers[answer]!),
-                  child: Text(answer),
-                  style: ElevatedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    padding: EdgeInsets.symmetric(vertical: 15, horizontal: 10),
-                  ),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question.questionText,
+            style: TextStyle(fontSize: 24),
+          ),
+          SizedBox(height: 20),
+          ...question.answers.entries.map((entry) {
+            return Container(
+              width: double.infinity,
+              margin: EdgeInsets.only(bottom: 10),
+              child: ElevatedButton(
+                onPressed: () => answerQuestion(entry.value),
+                child: Text(entry.key),
+                style: ElevatedButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  padding: EdgeInsets.symmetric(vertical: 15, horizontal: 10),
                 ),
-              );
-            }).toList(),
-          ],
-        ),
+              ),
+            );
+          }).toList(),
+        ],
       ),
     );
   }
